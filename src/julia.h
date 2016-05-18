@@ -520,14 +520,24 @@ typedef struct _jl_typemap_entry_t {
     int8_t va; // isVararg(sig)
 } jl_typemap_entry_t;
 
-// one level in a TypeMap tree
-// indexed by key if it is a sublevel in an array
+// one level in a TypeMap tree (each level splits on a type at a given offset)
 typedef struct _jl_typemap_level_t {
     JL_DATA_TYPE
-    jl_array_t *arg1;
-    jl_array_t *targ;
-    jl_typemap_entry_t *linear; // jl_typemap_t * (but no more levels)
-    jl_typemap_t *any; // type at offs is Any
+    // these vectors contains vectors of more levels in their intended visit order
+    // with an index that gives the functionality of a sorted dict.
+    // The first entry may be bottom (for entries which have no type at offs)
+    // next split may be on Type{T} as LeafTypes then TypeNames parents up to Any
+    // next split may be on LeafType
+    // next split may be on TypeName
+    jl_typemap_entry_t *bottom; // jl_typemap_t * (but no more levels) for entries which have no type at offs
+    jl_array_t *arg1; // contains LeafType
+    jl_array_t *targ; // contains Type{LeafType}
+    jl_array_t *name1; // contains non-abstract TypeName
+    jl_svec_t *tname; // contains a list of Type{TypeName} dicts, for parents up to Any
+    // next a linear list of unsortable things (no more levels)
+    jl_typemap_entry_t *linear;
+    // finally, start a new level if the type at offs is Any
+    jl_typemap_t *any;
 } jl_typemap_level_t;
 
 // contains the TypeMap for one Type

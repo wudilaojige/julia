@@ -910,6 +910,7 @@ function visit(f, mt::Core.MethodTable)
     nothing
 end
 function visit(f, mc::Core.TypeMapLevel)
+    mc.bottom !== nothing && visit(f, mc.bottom)
     if mc.targ !== nothing
         e = mc.targ::Vector{Any}
         for i in 2:2:length(e)
@@ -918,6 +919,20 @@ function visit(f, mc::Core.TypeMapLevel)
     end
     if mc.arg1 !== nothing
         e = mc.arg1::Vector{Any}
+        for i in 2:2:length(e)
+            isassigned(e, i) && visit(f, e[i])
+        end
+    end
+    if mc.tname !== nothing
+        for e in mc.tname::SimpleVector
+            e = e::Vector{Any}
+            for i in 2:2:length(e)
+                isassigned(e, i) && visit(f, e[i])
+            end
+        end
+    end
+    if mc.name1 !== nothing
+        e = mc.name1::Vector{Any}
         for i in 2:2:length(e)
             isassigned(e, i) && visit(f, e[i])
         end
