@@ -582,12 +582,6 @@ void addOptimizationPasses(legacy::PassManagerBase *PM, int opt_level,
     PM->add(createVerifierPass());
 #endif
 
-#if defined(JL_ASAN_ENABLED)
-    PM->add(createAddressSanitizerFunctionPass());
-#endif
-#if defined(JL_MSAN_ENABLED)
-    PM->add(llvm::createMemorySanitizerPass(true));
-#endif
     if (opt_level < 2) {
         PM->add(createCFGSimplificationPass());
         if (opt_level == 1) {
@@ -599,6 +593,7 @@ void addOptimizationPasses(legacy::PassManagerBase *PM, int opt_level,
         }
         PM->add(createMemCpyOptPass());
         PM->add(createAlwaysInlinerLegacyPass()); // Respect always_inline
+        PM->add(createLowerSimdLoopPass()); // Annotate loop marked with "loopinfo" as LLVM parallel loop
         if (lower_intrinsics) {
             PM->add(createBarrierNoopPass());
             PM->add(createLowerExcHandlersPass());
@@ -607,9 +602,17 @@ void addOptimizationPasses(legacy::PassManagerBase *PM, int opt_level,
             PM->add(createFinalLowerGCPass());
             PM->add(createLowerPTLSPass(dump_native));
         }
-        PM->add(createLowerSimdLoopPass()); // Annotate loop marked with "loopinfo" as LLVM parallel loop
         if (dump_native)
             PM->add(createMultiVersioningPass());
+#if defined(JL_ASAN_ENABLED)
+        PM->add(createAddressSanitizerFunctionPass());
+#endif
+#if defined(JL_MSAN_ENABLED)
+        PM->add(llvm::createMemorySanitizerPass(true));
+#endif
+#if defined(JL_TSAN_ENABLED)
+        PM->add(llvm::createThreadSanitizerPass());
+#endif
         return;
     }
     PM->add(createPropagateJuliaAddrspaces());
@@ -724,6 +727,15 @@ void addOptimizationPasses(legacy::PassManagerBase *PM, int opt_level,
     }
     PM->add(createCombineMulAddPass());
     PM->add(createDivRemPairsPass());
+#if defined(JL_ASAN_ENABLED)
+    PM->add(createAddressSanitizerFunctionPass());
+#endif
+#if defined(JL_MSAN_ENABLED)
+    PM->add(llvm::createMemorySanitizerPass(true));
+#endif
+#if defined(JL_TSAN_ENABLED)
+    PM->add(llvm::createThreadSanitizerPass());
+#endif
 }
 
 // An LLVM module pass that just runs all julia passes in order. Useful for

@@ -12,13 +12,21 @@
 #define sleep(x) Sleep(1000*x)
 #endif
 
-#if defined(__has_feature)
+#if defined(__has_feature) // Clang flavor
 #if __has_feature(address_sanitizer)
-#define JL_ASAN_ENABLED     // Clang flavor
+#define JL_ASAN_ENABLED
 #endif
-#elif defined(__SANITIZE_ADDRESS__)
-#define JL_ASAN_ENABLED     // GCC flavor
+#if __has_feature(memory_sanitizer)
+#define JL_MSAN_ENABLED
 #endif
+#if __has_feature(thread_sanitizer)
+#define JL_TSAN_ENABLED
+#endif
+#else // GCC flavor
+#if defined(__SANITIZE_ADDRESS__)
+#define JL_ASAN_ENABLED
+#endif
+#endif // __has_feature
 
 #ifdef JL_ASAN_ENABLED
 #ifdef __cplusplus
@@ -28,12 +36,6 @@ void __sanitizer_start_switch_fiber(void**, const void*, size_t);
 void __sanitizer_finish_switch_fiber(void*, const void**, size_t*);
 #ifdef __cplusplus
 }
-#endif
-#endif
-
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer)
-#define JL_MSAN_ENABLED
 #endif
 #endif
 
