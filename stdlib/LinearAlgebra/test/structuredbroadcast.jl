@@ -34,8 +34,16 @@ using Test, LinearAlgebra
         @test X .* (2.0,) isa typeof(X)
         @test isequal(X .* Inf, fX .* Inf)
 
+        two = 2.0
+        @test X .^ 2.0 ==  X .^ (2.0,) == fX .^ 2.0 == X .^ two
         two = 2
         @test X .^ 2 ==  X .^ (2,) == fX .^ 2 == X .^ two
+        @test X .^ 2 ==  X .^ (2,)
+        @test X .^ 2 ==  fX .^ 2
+        @test X .^ 2 ==  X .^ two
+        @test X .^ (2,) == fX .^ 2
+        @test X .^ (2,) == X .^ two
+        @test fX .^ 2 == X .^ two
         @test X .^ 2 isa typeof(X)
         @test X .^ (2,) isa typeof(X)
         @test X .^ two isa typeof(X)
