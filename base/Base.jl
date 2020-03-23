@@ -377,12 +377,8 @@ function include(mapexpr::Function, mod::Module, _path::AbstractString)
     tls[:SOURCE_PATH] = path
     local result
     try
-        # result = Core.include(mod, path)
-        if mapexpr === identity
-            result = ccall(:jl_load, Any, (Any, Cstring), mod, path)
-        else
-            result = ccall(:jl_load_rewrite, Any, (Any, Cstring, Any), mod, path, mapexpr)
-        end
+        result = ccall(:jl_load_rewrite, Any, (Any, Any, Any), mod, path,
+                       mapexpr === identity ? nothing : mapexpr)
     finally
         if prev === nothing
             delete!(tls, :SOURCE_PATH)

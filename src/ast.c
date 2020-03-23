@@ -27,6 +27,8 @@ extern "C" {
 #pragma warning(disable:4335)
 #endif
 
+// TODO: Move non-flisp stuff into frontend.c (symbol init + macro expansion etc)
+
 // head symbols for each expression type
 jl_sym_t *call_sym;    jl_sym_t *invoke_sym;
 jl_sym_t *empty_sym;   jl_sym_t *top_sym;
@@ -313,7 +315,7 @@ static void jl_ast_ctx_leave(jl_ast_context_t *ctx) JL_NOTSAFEPOINT
     JL_UNLOCK_NOGC(&flisp_lock);
 }
 
-void jl_init_frontend(void)
+void jl_init_flisp(void)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_ast_ctx_using || jl_ast_ctx_freed)
@@ -325,7 +327,10 @@ void jl_init_frontend(void)
     // To match the one in jl_ast_ctx_leave
     JL_SIGATOMIC_BEGIN();
     jl_ast_ctx_leave(&jl_ast_main_ctx);
+}
 
+void jl_init_common_symbols(void)
+{
     empty_sym = jl_symbol("");
     call_sym = jl_symbol("call");
     invoke_sym = jl_symbol("invoke");
@@ -404,7 +409,7 @@ JL_DLLEXPORT void jl_lisp_prompt(void)
     // Make `--lisp` sigatomic in order to avoid triggering the sigint safepoint.
     // We don't have our signal handler registered in that case anyway...
     JL_SIGATOMIC_BEGIN();
-    jl_init_frontend();
+    jl_init_flisp();
     jl_ast_context_t *ctx = jl_ast_ctx_enter();
     JL_AST_PRESERVE_PUSH(ctx, old_roots, jl_main_module);
     fl_context_t *fl_ctx = &ctx->fl;
@@ -776,209 +781,55 @@ static value_t julia_to_scm_(fl_context_t *fl_ctx, jl_value_t *v)
     return julia_to_scm_noalloc2(fl_ctx, v);
 }
 
-typedef enum {
-    JL_PARSE_ATOM       = 1,
-    JL_PARSE_STATEMENTS = 2,
-    JL_PARSE_TOPLEVEL   = 3,
-} jl_parse_rule_t;
-
-JL_DLLEXPORT jl_value_t *jl_fl_parse(const char *content, size_t content_len,
-                                     const char *filename, size_t filename_len,
-                                     int start_pos, jl_parse_rule_t rule)
+// Parse string `content` starting at 0-based index `offset` attributing the
+// content to `filename`. Return an svec of (parse_result, final_pos)
+JL_DLLEXPORT jl_value_t *jl_fl_parse(const char* text, size_t text_len,
+                                     const char* filename, size_t filename_len,
+                                     size_t offset, int rule)
 {
     JL_TIMING(PARSING);
-    if (start_pos < 0 || start_pos > content_len) {
-        jl_array_t *buf = jl_pchar_to_array(content, content_len);
-        JL_GC_PUSH1(&buf);
-        // jl_bounds_error roots the arguments.
-        jl_bounds_error((jl_value_t*)buf, jl_box_long(start_pos));
+    if (offset > text_len) {
+        jl_value_t *textstr = jl_pchar_to_string(text, text_len);
+        JL_GC_PUSH1(&textstr);
+        jl_bounds_error(textstr, jl_box_long(offset));
     }
-    else if (start_pos != 0 && rule == JL_PARSE_TOPLEVEL) {
+    else if (offset != 0 && rule == JL_PARSE_ALL) {
         jl_error("Partial parsing not support by top level grammar rule");
     }
-    jl_value_t *expr=NULL, *pos1=NULL;
-    JL_GC_PUSH2(&expr, &pos1);
 
-    // Call into flisp
     jl_ast_context_t *ctx = jl_ast_ctx_enter();
     fl_context_t *fl_ctx = &ctx->fl;
-    value_t fl_content = cvalue_static_cstrn(fl_ctx, content, content_len);
+    value_t fl_text = cvalue_static_cstrn(fl_ctx, text, text_len);
     value_t fl_filename = cvalue_static_cstrn(fl_ctx, filename, filename_len);
-    if (rule == JL_PARSE_TOPLEVEL) {
+    value_t fl_expr;
+    size_t pos1 = 0;
+    if (rule == JL_PARSE_ALL) {
         value_t e = fl_applyn(fl_ctx, 2, symbol_value(symbol(fl_ctx, "jl-parse-all")),
-                              fl_content, fl_filename);
-        expr = e == fl_ctx->FL_EOF ? jl_nothing : scm_to_julia(fl_ctx, e, NULL);
-        pos1 = e == fl_ctx->FL_EOF ? jl_box_long(content_len) : jl_box_long(0);
+                              fl_text, fl_filename);
+        fl_expr = e;
+        pos1 = e == fl_ctx->FL_EOF ? text_len : 0;
     }
-    else if (rule == JL_PARSE_STATEMENTS || rule == JL_PARSE_ATOM) {
-        value_t greedy = rule == JL_PARSE_STATEMENTS ?
-                         fl_ctx->T : fl_ctx->F;
+    else if (rule == JL_PARSE_STATEMENT || rule == JL_PARSE_ATOM) {
+        value_t greedy = rule == JL_PARSE_STATEMENT ? fl_ctx->T : fl_ctx->F;
         value_t p = fl_applyn(fl_ctx, 4, symbol_value(symbol(fl_ctx, "jl-parse-one")),
-                              fl_content, fl_filename, fixnum(start_pos), greedy);
-        value_t e = car_(p);
-        expr = e == fl_ctx->FL_EOF ? jl_nothing : scm_to_julia(fl_ctx, e, NULL);
-        pos1 = jl_box_long(tosize(fl_ctx, cdr_(p), "parse"));
-    }
-    jl_ast_ctx_leave(ctx);
-
-    if (expr == NULL) {
-        jl_errorf("Unknown grammar rule %d", (int)rule);
-    }
-
-    jl_value_t *result = (jl_value_t*)jl_svec2(expr, pos1);
-    JL_GC_POP();
-    return result;
-}
-
-// parse an entire string like a file, reading multiple expressions
-JL_DLLEXPORT jl_value_t *jl_parse_all(const char *str, size_t len,
-                                      const char *filename, size_t filename_len)
-{
-    jl_value_t *p = jl_fl_parse(str, len, filename, filename_len,
-                                0, JL_PARSE_TOPLEVEL);
-    return jl_svecref(p, 0);
-}
-
-// this is for parsing one expression out of a string, keeping track of
-// the current position.
-JL_DLLEXPORT jl_value_t *jl_parse_string(const char *str, size_t len,
-                                         int pos0, int greedy)
-{
-    return jl_fl_parse(str, len, "none", 4, pos0,
-                       greedy ? JL_PARSE_STATEMENTS : JL_PARSE_ATOM);
-}
-
-// deprecated
-JL_DLLEXPORT jl_value_t *jl_parse_input_line(const char *str, size_t len,
-                                             const char *filename, size_t filename_len)
-{
-    return jl_parse_all(str, len, filename, filename_len);
-}
-
-// parse and eval a whole file, possibly reading from a string (`content`)
-jl_value_t *jl_parse_eval_all(const char *fname,
-                              const char *content, size_t contentlen,
-                              jl_module_t *inmodule,
-                              jl_value_t *mapexpr)
-{
-    jl_ptls_t ptls = jl_get_ptls_states();
-    if (ptls->in_pure_callback)
-        jl_error("cannot use include inside a generated function");
-    jl_check_open_for(inmodule, "include");
-    jl_ast_context_t *ctx = jl_ast_ctx_enter();
-    fl_context_t *fl_ctx = &ctx->fl;
-    value_t f, ast, expression;
-    size_t len = strlen(fname);
-    f = cvalue_static_cstrn(fl_ctx, fname, len);
-    fl_gc_handle(fl_ctx, &f);
-    if (content != NULL) {
-        JL_TIMING(PARSING);
-        value_t t = cvalue_static_cstrn(fl_ctx, content, contentlen);
-        fl_gc_handle(fl_ctx, &t);
-        ast = fl_applyn(fl_ctx, 2, symbol_value(symbol(fl_ctx, "jl-parse-all")), t, f);
-        fl_free_gc_handles(fl_ctx, 1);
+                              fl_text, fl_filename, fixnum(offset), greedy);
+        fl_expr = car_(p);
+        pos1 = tosize(fl_ctx, cdr_(p), "parse");
     }
     else {
-        JL_TIMING(PARSING);
-        assert(memchr(fname, 0, len) == NULL); // was checked already in jl_load
-        ast = fl_applyn(fl_ctx, 1, symbol_value(symbol(fl_ctx, "jl-parse-file")), f);
-    }
-    fl_free_gc_handles(fl_ctx, 1);
-    if (ast == fl_ctx->F) {
         jl_ast_ctx_leave(ctx);
-        jl_errorf("could not open file %s", fname);
+        jl_errorf("Unknown parse rule %d", (int)rule);
     }
-    fl_gc_handle(fl_ctx, &ast);
-    fl_gc_handle(fl_ctx, &expression);
 
-    int last_lineno = jl_lineno;
-    const char *last_filename = jl_filename;
-    size_t last_age = jl_get_ptls_states()->world_age;
-    int lineno = 0;
-    jl_lineno = 0;
-    jl_filename = fname;
-    jl_module_t *old_module = ctx->module;
-    ctx->module = inmodule;
-    jl_value_t *form = NULL;
-    jl_value_t *result = jl_nothing;
-    int err = 0;
-    JL_GC_PUSH2(&form, &result);
-    JL_TRY {
-        assert(iscons(ast) && car_(ast) == symbol(fl_ctx, "toplevel"));
-        ast = cdr_(ast);
-        while (iscons(ast)) {
-            expression = car_(ast);
-            {
-                JL_TIMING(LOWERING);
-                if (fl_ctx->T == fl_applyn(fl_ctx, 1, symbol_value(symbol(fl_ctx, "contains-macrocall")), expression)) {
-                    form = scm_to_julia(fl_ctx, expression, inmodule);
-                    if (mapexpr)
-                        form = jl_call1(mapexpr, form);
-                    form = jl_expand_macros(form, inmodule, NULL, 0);
-                    expression = julia_to_scm(fl_ctx, form);
-                }
-                else if (mapexpr) {
-                    form = scm_to_julia(fl_ctx, expression, inmodule);
-                    form = jl_call1(mapexpr, form);
-                    expression = julia_to_scm(fl_ctx, form);
-                }
-                // expand non-final expressions in statement position (value unused)
-                expression =
-                    fl_applyn(fl_ctx, 4,
-                              symbol_value(symbol(fl_ctx, "jl-expand-to-thunk-warn")),
-                              expression, symbol(fl_ctx, fname), fixnum(lineno),
-                              iscons(cdr_(ast)) ? fl_ctx->T : fl_ctx->F);
-            }
-            jl_get_ptls_states()->world_age = jl_world_counter;
-            form = scm_to_julia(fl_ctx, expression, inmodule);
-            JL_SIGATOMIC_END();
-            jl_get_ptls_states()->world_age = jl_world_counter;
-            if (jl_is_linenode(form)) {
-                lineno = jl_linenode_line(form);
-                jl_lineno = lineno;
-            }
-            else {
-                result = jl_toplevel_eval_flex(inmodule, form, 1, 1);
-            }
-            JL_SIGATOMIC_BEGIN();
-            ast = cdr_(ast);
-        }
-    }
-    JL_CATCH {
-        form = jl_pchar_to_string(fname, len);
-        result = jl_box_long(jl_lineno);
-        err = 1;
-        goto finally; // skip jl_restore_excstack
-    }
-finally:
-    jl_get_ptls_states()->world_age = last_age;
-    jl_lineno = last_lineno;
-    jl_filename = last_filename;
-    fl_free_gc_handles(fl_ctx, 2);
-    ctx->module = old_module;
+    // Convert to julia values
+    jl_value_t *expr=NULL, *end_offset=NULL;
+    JL_GC_PUSH2(&expr, &end_offset);
+    expr = fl_expr == fl_ctx->FL_EOF ? jl_nothing : scm_to_julia(fl_ctx, fl_expr, NULL);
+    end_offset = jl_box_long(pos1);
     jl_ast_ctx_leave(ctx);
-    if (err) {
-        if (jl_loaderror_type == NULL)
-            jl_rethrow();
-        else
-            jl_rethrow_other(jl_new_struct(jl_loaderror_type, form, result,
-                                           jl_current_exception()));
-    }
+    jl_value_t *result = (jl_value_t*)jl_svec2(expr, end_offset);
     JL_GC_POP();
     return result;
-}
-
-JL_DLLEXPORT jl_value_t *jl_load_rewrite_file_string(const char *text, size_t len,
-                                                     char *filename, jl_module_t *inmodule,
-                                                     jl_value_t *mapexpr)
-{
-    return jl_parse_eval_all(filename, text, len, inmodule, mapexpr);
-}
-
-JL_DLLEXPORT jl_value_t *jl_load_file_string(const char *text, size_t len,
-                                             char *filename, jl_module_t *inmodule)
-{
-    return jl_parse_eval_all(filename, text, len, inmodule, NULL);
 }
 
 // returns either an expression or a thunk

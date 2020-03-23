@@ -42,7 +42,7 @@ endif
 RUNTIME_SRCS := \
 	jltypes gf typemap smallintset ast builtins module interpreter symbol \
 	dlload sys init task array dump staticdata toplevel jl_uv datatype \
-	simplevector runtime_intrinsics precompile \
+	simplevector runtime_intrinsics precompile frontend \
 	threading partr stackwalk gc gc-debug gc-pages gc-stacks method \
 	jlapi signal-handling safepoint timing subtype \
 	crc32c APInt-C processor

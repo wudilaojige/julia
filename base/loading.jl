@@ -1083,13 +1083,8 @@ actually evaluates `mapexpr(expr)`.  If it is omitted, `mapexpr` defaults to [`i
 """
 function include_string(mapexpr::Function, m::Module, txt_::AbstractString, fname::AbstractString="string")
     txt = String(txt_)
-    if mapexpr === identity
-        ccall(:jl_load_file_string, Any, (Ptr{UInt8}, Csize_t, Cstring, Any),
-            txt, sizeof(txt), String(fname), m)
-    else
-        ccall(:jl_load_rewrite_file_string, Any, (Ptr{UInt8}, Csize_t, Cstring, Any, Any),
-            txt, sizeof(txt), String(fname), m, mapexpr)
-    end
+    ccall(:jl_parse_eval_all, Any, (Any, Any, Any, Any),
+          m, txt, String(fname), mapexpr === identity ? nothing : mapexpr)
 end
 
 include_string(m::Module, txt::AbstractString, fname::AbstractString="string") =
@@ -1123,7 +1118,7 @@ The optional first argument `mapexpr` can be used to transform the included code
 it is evaluated: for each parsed expression `expr` in `path`, the `include` function
 actually evaluates `mapexpr(expr)`.  If it is omitted, `mapexpr` defaults to [`identity`](@ref).
 """
-Base.include # defined in sysimg.jl
+Base.include # defined in Base.jl
 
 """
     evalfile(path::AbstractString, args::Vector{String}=String[])
