@@ -124,7 +124,7 @@ cst = map(cost, ci.code)
   1
   1
   1
-  0
+  1
   0
   0
   ⋮
@@ -133,7 +133,7 @@ cst = map(cost, ci.code)
   0
   0
   1
-  0
+  1
   0
   0
   0

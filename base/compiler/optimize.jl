@@ -315,17 +315,30 @@ function statement_cost(ex::Expr, line::Int, src::CodeInfo, sptypes::Vector{Any}
                 # tuple iteration/destructuring makes that impossible
                 # return plus_saturate(argcost, isknowntype(extyp) ? 1 : params.inline_nonleaf_penalty)
                 return 0
-            elseif (f === Main.Core.arrayref || f === Main.Core.const_arrayref) && length(ex.args) >= 3
+            elseif (f === Main.Core.arrayref || f === Main.Core.const_arrayref || f === Main.Core.arrayset) && length(ex.args) >= 3
                 atyp = argextype(ex.args[3], src, sptypes, slottypes)
                 return isknowntype(atyp) ? 4 : params.inline_nonleaf_penalty
+            elseif (f === isa || f === typeassert) && isconstType(widenconst(argextype(ex.args[3], src, sptypes, slottypes)))
+                return 1
+            elseif f === typeof
+                return 1
             end
             fidx = find_tfunc(f)
             if fidx === nothing
-                # unknown/unhandled builtin or anonymous function
+                # unknown/unhandled builtin
                 # Use the generic cost of a direct function call
                 return 20
             end
-            return T_FFUNC_COST[fidx]
+            cost = T_FFUNC_COST[fidx]
+            if cost < 20
+                for i = 2:length(ex.args)
+                    argtyp = argextype(ex.args[i], src, sptypes, slottypes)
+                    if !(isknowntype(argtyp) || isType(argtyp))
+                        return 20
+                    end
+                end
+            end
+            return cost
         end
         return params.inline_nonleaf_penalty
     elseif head === :foreigncall || head === :invoke
@@ -366,7 +379,7 @@ function statement_cost(ex::Expr, line::Int, src::CodeInfo, sptypes::Vector{Any}
         # loops are generally always expensive
         # but assume that forward jumps are already counted for from
         # summing the cost of the not-taken branch
-        return target < line ? 40 : 0
+        return target < line ? 40 : 1
     end
     return 0
 end
