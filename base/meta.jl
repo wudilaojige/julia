@@ -149,6 +149,24 @@ struct ParseError <: Exception
     msg::AbstractString
 end
 
+function _jl_parse(text::AbstractString, filename::AbstractString,
+                   pos::Integer, rule::Integer)
+    if pos < 1 || pos > ncodeunits(text) + 1
+        throw(BoundsError(text, pos))
+    end
+    # Technically only need pointers to UTF-8 buffers here. For now converting
+    # to a plain String is the easy way to ensure that.
+    filename = String(filename)
+    text = String(text)
+    # Call into the parser which can be replaced globally during bootstrap with
+    # jl_set_parser
+    ex,pos = ccall(:jl_parse, Any,
+                   (Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t, Csize_t, Cint),
+                   text, sizeof(text), filename, sizeof(filename), pos-1, rule)
+    # internally, pos is a zero-based byte offset - convert back.
+    ex, pos+1
+end
+
 """
     parse(str, start; greedy=true, raise=true, depwarn=true)
 
@@ -171,25 +189,16 @@ julia> Meta.parse("x = 3, y = 5", 5)
 """
 function parse(str::AbstractString, pos::Integer; greedy::Bool=true, raise::Bool=true,
                depwarn::Bool=true)
-    if pos < 1 || pos > ncodeunits(str) + 1
-        throw(BoundsError(str, pos))
-    end
-    filename = "none"
     JL_PARSE_ATOM = 1
     JL_PARSE_STATEMENT = 2
     rule = greedy ? JL_PARSE_STATEMENT : JL_PARSE_ATOM
     # For now, assume all parser warnings are depwarns
     # TODO: remove parser-depwarn; parser no longer emits warnings.
-    ex, pos = with_logger(depwarn ? current_logger() : NullLogger()) do
-        ccall(:jl_parse, Any,
-              (Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t, Csize_t, Cint),
-              str, sizeof(str), filename, sizeof(filename), pos-1, rule)
-    end
+    ex, pos = _jl_parse(str, "none", pos, rule)
     if raise && isa(ex,Expr) && ex.head === :error
         throw(ParseError(ex.args[1]))
     end
-    # internal pos is zero-based byte offset
-    return ex, pos+1
+    return ex, pos
 end
 
 """
@@ -226,6 +235,17 @@ function parse(str::AbstractString; raise::Bool=true, depwarn::Bool=true)
         raise && throw(ParseError("extra token after end of expression"))
         return Expr(:error, "extra token after end of expression")
     end
+    return ex
+end
+
+function parseatom(text::AbstractString, pos::Integer; filename="none")
+    JL_PARSE_ATOM = 1
+    return _jl_parse(text, filename, pos, JL_PARSE_ATOM)
+end
+
+function parseall(text::AbstractString; filename="none")
+    JL_PARSE_ALL = 3
+    ex,_ = _jl_parse(text, filename, 1, JL_PARSE_ALL)
     return ex
 end
 

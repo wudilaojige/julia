@@ -1081,10 +1081,34 @@ The optional first argument `mapexpr` can be used to transform the included code
 it is evaluated: for each parsed expression `expr` in `code`, the `include_string` function
 actually evaluates `mapexpr(expr)`.  If it is omitted, `mapexpr` defaults to [`identity`](@ref).
 """
-function include_string(mapexpr::Function, m::Module, txt_::AbstractString, fname::AbstractString="string")
-    txt = String(txt_)
-    ccall(:jl_parse_eval_all, Any, (Any, Any, Any, Any),
-          m, txt, String(fname), mapexpr === identity ? nothing : mapexpr)
+function include_string(mapexpr::Function, mod::Module, code::AbstractString,
+                        filename::AbstractString="string")
+    loc = LineNumberNode(1, Symbol(filename))
+    try
+        ast = Meta.parseall(code, filename=filename)
+        @assert Meta.isexpr(ast, :toplevel)
+        result = nothing
+        line_and_ex = Expr(:toplevel, loc, nothing)
+        for ex in ast.args
+            if ex isa LineNumberNode
+                loc = ex
+                line_and_ex.args[1] = ex
+                continue
+            end
+            ex = mapexpr(ex)
+            # Wrap things to be eval'd in a :toplevel expr to carry line
+            # information as part of the expr.
+            line_and_ex.args[2] = ex
+            # Macro expand, lower, and evaluate successive top-level statements
+            # in the latest world.
+            result = invokelatest(Core.eval, mod, line_and_ex)
+        end
+        return result
+    catch exc
+        # TODO: Now that stacktraces are more reliable we should remove
+        # LoadError and expose the real error type directly.
+        rethrow(LoadError(String(loc.file), loc.line, exc))
+    end
 end
 
 include_string(m::Module, txt::AbstractString, fname::AbstractString="string") =
@@ -1119,6 +1143,26 @@ it is evaluated: for each parsed expression `expr` in `path`, the `include` func
 actually evaluates `mapexpr(expr)`.  If it is omitted, `mapexpr` defaults to [`identity`](@ref).
 """
 Base.include # defined in Base.jl
+
+# Full include() implementation which is used after bootstrap
+function _include(mapexpr::Function, mod::Module, _path::AbstractString)
+    path, prev = _include_dependency(mod, _path)
+    for callback in include_callbacks # to preserve order, must come before eval in include_string
+        invokelatest(callback, mod, path)
+    end
+    code = read(path, String)
+    tls = task_local_storage()
+    tls[:SOURCE_PATH] = path
+    try
+        include_string(mapexpr, mod, code, path)
+    finally
+        if prev === nothing
+            delete!(tls, :SOURCE_PATH)
+        else
+            tls[:SOURCE_PATH] = prev
+        end
+    end
+end
 
 """
     evalfile(path::AbstractString, args::Vector{String}=String[])
