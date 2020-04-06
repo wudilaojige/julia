@@ -7536,43 +7536,43 @@ extern "C" void jl_init_codegen(void)
 
 // the rest of this file are convenience functions
 // that are exported for assisting with debugging from gdb
-extern "C" void jl_dump_llvm_value(void *v)
+extern "C" JL_NOINSTRUMENT void jl_dump_llvm_value(void *v)
 {
     llvm_dump((Value*)v);
 }
 
-extern "C" void jl_dump_llvm_inst_function(void *v)
+extern "C" JL_NOINSTRUMENT void jl_dump_llvm_inst_function(void *v)
 {
     llvm_dump(cast<Instruction>(((Value*)v))->getParent()->getParent());
 }
 
-extern "C" void jl_dump_llvm_type(void *v)
+extern "C" JL_NOINSTRUMENT void jl_dump_llvm_type(void *v)
 {
     llvm_dump((Type*)v);
 }
 
-extern "C" void jl_dump_llvm_module(void *v)
+extern "C" JL_NOINSTRUMENT void jl_dump_llvm_module(void *v)
 {
     llvm_dump((Module*)v);
 }
 
-extern "C" void jl_dump_llvm_metadata(void *v)
+extern "C" JL_NOINSTRUMENT void jl_dump_llvm_metadata(void *v)
 {
     llvm_dump((Metadata*)v);
 }
 
-extern "C" void jl_dump_llvm_debugloc(void *v)
+extern "C" JL_NOINSTRUMENT void jl_dump_llvm_debugloc(void *v)
 {
     llvm_dump((DebugLoc*)v);
 }
 
-extern void jl_write_bitcode_func(void *F, char *fname) {
+extern JL_NOINSTRUMENT void jl_write_bitcode_func(void *F, char *fname) {
     std::error_code EC;
     raw_fd_ostream OS(fname, EC, sys::fs::F_None);
     llvm::WriteBitcodeToFile(*((llvm::Function*)F)->getParent(), OS);
 }
 
-extern void jl_write_bitcode_module(void *M, char *fname) {
+extern JL_NOINSTRUMENT void jl_write_bitcode_module(void *M, char *fname) {
     std::error_code EC;
     raw_fd_ostream OS(fname, EC, sys::fs::F_None);
     llvm::WriteBitcodeToFile(*(llvm::Module*)M, OS);

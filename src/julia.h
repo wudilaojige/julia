@@ -49,6 +49,7 @@
 #  define JL_USED_FUNC __attribute__((used))
 #  define JL_SECTION(name) __attribute__((section(name)))
 #  define JL_THREAD_LOCAL __thread
+#  define JL_NOINSTRUMENT __attribute__ ((no_instrument_function))
 #elif defined(_COMPILER_MICROSOFT_)
 #  define JL_NORETURN __declspec(noreturn)
 // This is the closest I can find for __attribute__((const))
@@ -63,6 +64,7 @@
 #  define JL_CONST_FUNC
 #  define JL_USED_FUNC
 #  define JL_THREAD_LOCAL
+#  define JL_NOINSTRUMENT
 #endif
 
 #define container_of(ptr, type, member) \
@@ -1882,9 +1884,9 @@ JL_DLLEXPORT jl_value_t *jl_stdout_obj(void) JL_NOTSAFEPOINT;
 JL_DLLEXPORT jl_value_t *jl_stderr_obj(void) JL_NOTSAFEPOINT;
 JL_DLLEXPORT size_t jl_static_show(JL_STREAM *out, jl_value_t *v) JL_NOTSAFEPOINT;
 JL_DLLEXPORT size_t jl_static_show_func_sig(JL_STREAM *s, jl_value_t *type) JL_NOTSAFEPOINT;
-JL_DLLEXPORT void jlbacktrace(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT JL_NOINSTRUMENT void jlbacktrace(void) JL_NOTSAFEPOINT;
 // Mainly for debugging, use `void*` so that no type cast is needed in C++.
-JL_DLLEXPORT void jl_(void *jl_value) JL_NOTSAFEPOINT;
+JL_DLLEXPORT JL_NOINSTRUMENT void jl_(void *jl_value) JL_NOTSAFEPOINT;
 
 // julia options -----------------------------------------------------------
 // NOTE: This struct needs to be kept in sync with JLOptions type in base/options.jl

@@ -715,13 +715,13 @@ void jl_print_bt_entry_codeloc(jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT
 
 //--------------------------------------------------
 // Tools for interactive debugging in gdb
-JL_DLLEXPORT void jl_gdblookup(void* ip)
+JL_DLLEXPORT JL_NOINSTRUMENT void jl_gdblookup(void* ip)
 {
     jl_print_native_codeloc((uintptr_t)ip);
 }
 
 // Print backtrace for current exception in catch block
-JL_DLLEXPORT void jlbacktrace(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT JL_NOINSTRUMENT void jlbacktrace(void) JL_NOTSAFEPOINT
 {
     jl_excstack_t *s = jl_get_ptls_states()->current_task->excstack;
     if (!s)
