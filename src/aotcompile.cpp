@@ -24,6 +24,9 @@
 #if defined(JL_ASAN_ENABLED)
 #include <llvm/Transforms/Instrumentation/AddressSanitizer.h>
 #endif
+#if defined(JL_TSAN_ENABLED)
+#include <llvm/Transforms/Instrumentation/ThreadSanitizer.h>
+#endif
 #include <llvm/Transforms/Scalar/GVN.h>
 #include <llvm/Transforms/IPO/AlwaysInliner.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
@@ -611,7 +614,7 @@ void addOptimizationPasses(legacy::PassManagerBase *PM, int opt_level,
         PM->add(llvm::createMemorySanitizerPass(true));
 #endif
 #if defined(JL_TSAN_ENABLED)
-        PM->add(llvm::createThreadSanitizerPass());
+        PM->add(createThreadSanitizerLegacyPassPass());
 #endif
         return;
     }
@@ -734,7 +737,7 @@ void addOptimizationPasses(legacy::PassManagerBase *PM, int opt_level,
     PM->add(llvm::createMemorySanitizerPass(true));
 #endif
 #if defined(JL_TSAN_ENABLED)
-    PM->add(llvm::createThreadSanitizerPass());
+    PM->add(createThreadSanitizerLegacyPassPass());
 #endif
 }
 
