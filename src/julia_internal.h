@@ -28,7 +28,7 @@
 #endif
 #endif // __has_feature
 
-#if defined(JL_ASAN_ENABLED) || defined(JL_TSAN_ENABLED)
+#ifdef JL_ASAN_ENABLED
 #ifdef __cplusplus
 extern "C" {
 #endif

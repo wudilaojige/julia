@@ -40,7 +40,7 @@
 extern "C" {
 #endif
 
-#if defined(JL_ASAN_ENABLED) || defined(JL_TSAN_ENABLED)
+#ifdef JL_ASAN_ENABLED
 static inline void sanitizer_start_switch_fiber(const void* bottom, size_t size) {
     __sanitizer_start_switch_fiber(NULL, bottom, size);
 }
