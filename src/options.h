@@ -154,7 +154,6 @@
 
 // sanitizer defaults ---------------------------------------------------------
 
-// XXX: these macros are duplicated from julia_internal.h
 #if defined(__has_feature) // Clang flavor
 #if __has_feature(address_sanitizer)
 #define JL_ASAN_ENABLED

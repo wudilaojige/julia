@@ -12,31 +12,20 @@
 #define sleep(x) Sleep(1000*x)
 #endif
 
-#if defined(__has_feature) // Clang flavor
-#if __has_feature(address_sanitizer)
-#define JL_ASAN_ENABLED
-#endif
-#if __has_feature(memory_sanitizer)
-#define JL_MSAN_ENABLED
-#endif
-#if __has_feature(thread_sanitizer)
-#define JL_TSAN_ENABLED
-#endif
-#else // GCC flavor
-#if defined(__SANITIZE_ADDRESS__)
-#define JL_ASAN_ENABLED
-#endif
-#endif // __has_feature
-
-#ifdef JL_ASAN_ENABLED
 #ifdef __cplusplus
 extern "C" {
 #endif
+#ifdef JL_ASAN_ENABLED
 void __sanitizer_start_switch_fiber(void**, const void*, size_t);
 void __sanitizer_finish_switch_fiber(void*, const void**, size_t*);
+#endif
+#ifdef JL_TSAN_ENABLED
+void *__tsan_create_fiber(unsigned flags);
+// void __tsan_destroy_fiber(void *fiber);
+void __tsan_switch_to_fiber(void *fiber, unsigned flags);
+#endif
 #ifdef __cplusplus
 }
-#endif
 #endif
 
 // Remove when C11 is required for C code.
