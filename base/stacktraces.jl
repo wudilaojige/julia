@@ -268,22 +268,29 @@ function show(io::IO, frame::StackFrame; full_path::Bool=false)
     end
 end
 
+function Base.parentmodule(frame::StackFrame)
+    if frame.linfo isa MethodInstance
+        def = frame.linfo.def
+        if def isa Module
+            return def
+        else
+            @assert def isa Method
+            return def.module
+        end
+    else
+        # Bug: currently the module is not available for inlined frames and
+        # frames arising from the interpreter.
+        nothing
+    end
+end
+
 """
     from(frame::StackFrame, filter_mod::Module) -> Bool
 
 Returns whether the `frame` is from the provided `Module`
 """
 function from(frame::StackFrame, m::Module)
-    finfo = frame.linfo
-    result = false
-
-    if finfo isa MethodInstance
-        frame_m = finfo.def
-        isa(frame_m, Method) && (frame_m = frame_m.module)
-        result = nameof(frame_m) === nameof(m)
-    end
-
-    return result
+    parentmodule(frame) == m
 end
 
 end
