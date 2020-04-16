@@ -190,7 +190,7 @@ static void eval_abstracttype(jl_expr_t *ex, interpreter_state *s)
     jl_binding_t *b = jl_get_binding_wr(modu, (jl_sym_t*)name, 1);
     temp = b->value;
     check_can_assign_type(b, w);
-    b->value = w;
+    jl_atomic_store_release(&b->value, w);
     jl_gc_wb_binding(b, w);
     JL_TRY {
         inside_typedef = 1;
@@ -200,10 +200,10 @@ static void eval_abstracttype(jl_expr_t *ex, interpreter_state *s)
     }
     JL_CATCH {
         jl_reset_instantiate_inner_types(dt);
-        b->value = temp;
+        jl_atomic_store_release(&b->value, temp);
         jl_rethrow();
     }
-    b->value = temp;
+    jl_atomic_store_release(&b->value, temp);
     if (temp == NULL || !equiv_type(dt, (jl_datatype_t*)jl_unwrap_unionall(temp))) {
         jl_checked_assignment(b, w);
     }
@@ -241,7 +241,7 @@ static void eval_primitivetype(jl_expr_t *ex, interpreter_state *s)
     jl_binding_t *b = jl_get_binding_wr(modu, (jl_sym_t*)name, 1);
     temp = b->value;
     check_can_assign_type(b, w);
-    b->value = w;
+    jl_atomic_store_release(&b->value, w);
     jl_gc_wb_binding(b, w);
     JL_TRY {
         inside_typedef = 1;
@@ -251,10 +251,10 @@ static void eval_primitivetype(jl_expr_t *ex, interpreter_state *s)
     }
     JL_CATCH {
         jl_reset_instantiate_inner_types(dt);
-        b->value = temp;
+        jl_atomic_store_release(&b->value, temp);
         jl_rethrow();
     }
-    b->value = temp;
+    jl_atomic_store_release(&b->value, temp);
     if (temp == NULL || !equiv_type(dt, (jl_datatype_t*)jl_unwrap_unionall(temp))) {
         jl_checked_assignment(b, w);
     }
@@ -290,7 +290,7 @@ static void eval_structtype(jl_expr_t *ex, interpreter_state *s)
     temp = b->value;  // save old value
     // temporarily assign so binding is available for field types
     check_can_assign_type(b, w);
-    b->value = w;
+    jl_atomic_store_release(&b->value, w);
     jl_gc_wb_binding(b, w);
 
     JL_TRY {
@@ -312,12 +312,12 @@ static void eval_structtype(jl_expr_t *ex, interpreter_state *s)
     }
     JL_CATCH {
         jl_reset_instantiate_inner_types(dt);
-        b->value = temp;
+        jl_atomic_store_release(&b->value, temp);
         jl_rethrow();
     }
     jl_compute_field_offsets(dt);
 
-    b->value = temp;
+    jl_atomic_store_release(&b->value, temp);
     if (temp == NULL || !equiv_type(dt, (jl_datatype_t*)jl_unwrap_unionall(temp))) {
         jl_checked_assignment(b, w);
     }
