@@ -887,14 +887,13 @@ JL_DLLEXPORT jl_value_t *jl_infer_thunk(jl_code_info_t *thk, jl_module_t *m)
 
 
 //------------------------------------------------------------------------------
-// Code loading: combined parse+eval for include() and include_string()
+// Code loading: combined parse+eval for include()
 
 // Parse julia code from the string `text` at top level, attributing it to
-// `filename`. Each resulting top level expression is optionally transformed by
-// `mapexpr` (if not nothing) before being lowered and evaluated in module
-// `module`.
-JL_DLLEXPORT jl_value_t *jl_parse_eval_all(jl_module_t *module, jl_value_t *text,
-                                           jl_value_t *filename, jl_value_t *mapexpr)
+// `filename`. This is used during bootstrap, but the real Base.include() is
+// implemented in Julia code.
+jl_value_t *jl_parse_eval_all(jl_module_t *module, jl_value_t *text,
+                              jl_value_t *filename)
 {
     if (!jl_is_string(text) || !jl_is_string(filename)) {
         jl_errorf("Expected `String`s for `text` and `filename`");
@@ -931,9 +930,6 @@ JL_DLLEXPORT jl_value_t *jl_parse_eval_all(jl_module_t *module, jl_value_t *text
                 lineno = jl_linenode_line(expression);
                 jl_lineno = lineno;
                 continue;
-            }
-            if (mapexpr != jl_nothing) {
-                expression = jl_call1(mapexpr, expression);
             }
             expression = jl_expand_with_loc_warn(expression, module,
                                                  jl_string_data(filename), lineno);
@@ -981,13 +977,11 @@ static jl_value_t *jl_file_content_as_string(jl_value_t *filename)
 
 // Load and parse julia code from the file `filename`. Eval the resulting
 // statements into `module` after applying `mapexpr` to each one.
-JL_DLLEXPORT jl_value_t *jl_load_rewrite(jl_module_t *module,
-                                         jl_value_t *filename,
-                                         jl_value_t *mapexpr)
+JL_DLLEXPORT jl_value_t *jl_load_(jl_module_t *module, jl_value_t *filename)
 {
     jl_value_t *text = jl_file_content_as_string(filename);
     JL_GC_PUSH1(&text);
-    jl_value_t *result = jl_parse_eval_all(module, text, filename, mapexpr);
+    jl_value_t *result = jl_parse_eval_all(module, text, filename);
     JL_GC_POP();
     return result;
 }
@@ -1000,7 +994,7 @@ JL_DLLEXPORT jl_value_t *jl_load(jl_module_t *module, const char *filename)
     jl_value_t *filename_ = NULL;
     JL_GC_PUSH1(&filename_);
     filename_ = jl_cstr_to_string(filename);
-    jl_value_t *result = jl_load_rewrite(module, filename_, jl_nothing);
+    jl_value_t *result = jl_load_(module, filename_);
     JL_GC_POP();
     return result;
 }
@@ -1015,7 +1009,7 @@ JL_DLLEXPORT jl_value_t *jl_load_file_string(const char *text, size_t len,
     JL_GC_PUSH2(&text_, &filename_);
     text_ = jl_pchar_to_string(text, len);
     filename_ = jl_cstr_to_string(filename);
-    jl_value_t *result = jl_parse_eval_all(module, text_, filename_, jl_nothing);
+    jl_value_t *result = jl_parse_eval_all(module, text_, filename_);
     JL_GC_POP();
     return result;
 }
@@ -1023,10 +1017,6 @@ JL_DLLEXPORT jl_value_t *jl_load_file_string(const char *text, size_t len,
 
 //--------------------------------------------------
 // Code loading helpers for bootstrap
-JL_DLLEXPORT jl_value_t *jl_load_(jl_module_t *module, jl_value_t *filename)
-{
-    return jl_load_rewrite(module, filename, jl_nothing);
-}
 
 JL_DLLEXPORT jl_value_t *jl_prepend_cwd(jl_value_t *str)
 {
