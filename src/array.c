@@ -542,10 +542,9 @@ JL_DLLEXPORT jl_value_t *jl_ptrarrayref(jl_array_t *a JL_PROPAGATES_ROOT, size_t
 {
     assert(i < jl_array_len(a));
     assert(a->flags.ptrarray);
-    jl_value_t *elt = ((jl_value_t**)a->data)[i];
-    if (elt == NULL) {
+    jl_value_t *elt = jl_atomic_load_relaxed(((jl_value_t**)a->data) + i);
+    if (elt == NULL)
         jl_throw(jl_undefref_exception);
-    }
     return elt;
 }
 
@@ -569,7 +568,7 @@ JL_DLLEXPORT jl_value_t *jl_arrayref(jl_array_t *a, size_t i)
 JL_DLLEXPORT int jl_array_isassigned(jl_array_t *a, size_t i)
 {
     if (a->flags.ptrarray) {
-        return ((jl_value_t**)jl_array_data(a))[i] != NULL;
+        return jl_atomic_load_relaxed(((jl_value_t**)jl_array_data(a)) + i) != NULL;
     }
     else if (a->flags.hasptr) {
          jl_datatype_t *eltype = (jl_datatype_t*)jl_tparam0(jl_typeof(a));
@@ -600,12 +599,14 @@ JL_DLLEXPORT void jl_arrayset(jl_array_t *a JL_ROOTING_ARGUMENT, jl_value_t *rhs
             if (jl_is_datatype_singleton((jl_datatype_t*)jl_typeof(rhs)))
                 return;
         }
+        if (a->flags.hasptr)
+            jl_fence_release();
         jl_assign_bits(&((char*)a->data)[i * a->elsize], rhs);
         if (a->flags.hasptr)
             jl_gc_multi_wb(jl_array_owner(a), rhs);
     }
     else {
-        ((jl_value_t**)a->data)[i] = rhs;
+        jl_atomic_store_release(((jl_value_t**)a->data) + i, rhs);
         jl_gc_wb(jl_array_owner(a), rhs);
     }
 }
@@ -615,7 +616,7 @@ JL_DLLEXPORT void jl_arrayunset(jl_array_t *a, size_t i)
     if (i >= jl_array_len(a))
         jl_bounds_error_int((jl_value_t*)a, i + 1);
     if (a->flags.ptrarray)
-        ((jl_value_t**)a->data)[i] = NULL;
+        jl_atomic_store_release(((jl_value_t**)a->data) + i, NULL);
     else if (a->flags.hasptr) {
         size_t elsize = a->elsize;
         jl_assume(elsize >= sizeof(void*) && elsize % sizeof(void*) == 0);
@@ -1200,6 +1201,7 @@ JL_DLLEXPORT void jl_array_ptr_copy(jl_array_t *dest, void **dest_p,
 {
     assert(dest->flags.ptrarray && src->flags.ptrarray);
     jl_value_t *owner = jl_array_owner(dest);
+    jl_fence_release(); // ensure contents of src are visible on other processors
     // Destination is old and doesn't refer to any young object
     if (__unlikely(jl_astaggedvalue(owner)->bits.gc == GC_OLD_MARKED)) {
         jl_value_t *src_owner = jl_array_owner(src);
@@ -1219,6 +1221,7 @@ JL_DLLEXPORT void jl_array_ptr_copy(jl_array_t *dest, void **dest_p,
         }
     }
     memmove(dest_p, src_p, n * sizeof(void*));
+    jl_fence_release(); // to finish up, ensure contents of dest is now visible on other processors too
 }
 
 JL_DLLEXPORT void jl_array_ptr_1d_push(jl_array_t *a, jl_value_t *item)
