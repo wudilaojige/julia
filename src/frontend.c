@@ -20,9 +20,9 @@ JL_DLLEXPORT void jl_set_parser(jl_parse_func_t parser)
 
 JL_DLLEXPORT jl_value_t *jl_parse(const char* text, size_t text_len,
                                   const char* filename, size_t filename_len,
-                                  size_t offset, int rule)
+                                  size_t offset, jl_value_t* options)
 {
-    return (*jl_current_parser)(text, text_len, filename, filename_len, offset, rule);
+    return (*jl_current_parser)(text, text_len, filename, filename_len, offset, options);
 }
 
 // C API
@@ -31,18 +31,17 @@ JL_DLLEXPORT jl_value_t *jl_parse_all(const char *text, size_t text_len,
                                       const char *filename, size_t filename_len)
 {
     jl_value_t *p = jl_parse(text, text_len, filename, filename_len,
-                             0, JL_PARSE_ALL);
+                             0, (jl_value_t*)all_sym);
     return jl_svecref(p, 0);
 }
 
 // this is for parsing one expression out of a string, keeping track of
 // the current position.
-// FIXME: Add filename?
 JL_DLLEXPORT jl_value_t *jl_parse_string(const char *text, size_t text_len,
                                          int pos0, int greedy)
 {
     return jl_parse(text, text_len, "none", 4,
-                    pos0, greedy ? JL_PARSE_STATEMENT : JL_PARSE_ATOM);
+                    pos0, greedy ? (jl_value_t*)statement_sym : (jl_value_t*)atom_sym);
 }
 
 // deprecated

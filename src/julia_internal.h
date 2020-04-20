@@ -638,13 +638,16 @@ jl_tupletype_t *arg_type_tuple(jl_value_t *arg1, jl_value_t **args, size_t nargs
 
 int jl_has_meta(jl_array_t *body, jl_sym_t *sym);
 
-// Parser replacement
-typedef jl_value_t* (*jl_parse_func_t)(const char*, size_t, const char*, size_t, size_t, int);
+// Experimental parser replacement API
+JL_DLLEXPORT jl_value_t *jl_parse(const char* text, size_t text_len,
+                                  const char* filename, size_t filename_len,
+                                  size_t offset, jl_value_t *options);
+typedef jl_value_t* (*jl_parse_func_t)(const char*, size_t, const char*, size_t, size_t, jl_value_t*);
 JL_DLLEXPORT void jl_set_parser(jl_parse_func_t parser);
 // Builtin flisp parser
 JL_DLLEXPORT jl_value_t *jl_fl_parse(const char* text, size_t text_len,
                                      const char* filename, size_t filename_len,
-                                     size_t offset, int rule);
+                                     size_t offset, jl_value_t *options);
 
 //--------------------------------------------------
 // Backtraces
@@ -1174,6 +1177,7 @@ extern jl_sym_t *gc_preserve_begin_sym; extern jl_sym_t *gc_preserve_end_sym;
 extern jl_sym_t *failed_sym; extern jl_sym_t *done_sym; extern jl_sym_t *runnable_sym;
 extern jl_sym_t *coverageeffect_sym; extern jl_sym_t *escape_sym;
 extern jl_sym_t *optlevel_sym;
+extern jl_sym_t *atom_sym; extern jl_sym_t *statement_sym; extern jl_sym_t *all_sym;
 
 struct _jl_sysimg_fptrs_t;
 

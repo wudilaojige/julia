@@ -67,6 +67,7 @@ jl_sym_t *gc_preserve_begin_sym; jl_sym_t *gc_preserve_end_sym;
 jl_sym_t *coverageeffect_sym; jl_sym_t *escape_sym;
 jl_sym_t *aliasscope_sym; jl_sym_t *popaliasscope_sym;
 jl_sym_t *optlevel_sym;
+jl_sym_t *atom_sym; jl_sym_t *statement_sym; jl_sym_t *all_sym;
 
 static uint8_t flisp_system_image[] = {
 #include <julia_flisp.boot.inc>
@@ -402,6 +403,9 @@ void jl_init_common_symbols(void)
     coverageeffect_sym = jl_symbol("code_coverage_effect");
     aliasscope_sym = jl_symbol("aliasscope");
     popaliasscope_sym = jl_symbol("popaliasscope");
+    atom_sym = jl_symbol("atom");
+    statement_sym = jl_symbol("statement");
+    all_sym = jl_symbol("all");
 }
 
 JL_DLLEXPORT void jl_lisp_prompt(void)
@@ -785,7 +789,7 @@ static value_t julia_to_scm_(fl_context_t *fl_ctx, jl_value_t *v)
 // content to `filename`. Return an svec of (parse_result, final_pos)
 JL_DLLEXPORT jl_value_t *jl_fl_parse(const char* text, size_t text_len,
                                      const char* filename, size_t filename_len,
-                                     size_t offset, int rule)
+                                     size_t offset, jl_value_t *options)
 {
     JL_TIMING(PARSING);
     if (offset > text_len) {
@@ -793,8 +797,12 @@ JL_DLLEXPORT jl_value_t *jl_fl_parse(const char* text, size_t text_len,
         JL_GC_PUSH1(&textstr);
         jl_bounds_error(textstr, jl_box_long(offset));
     }
-    else if (offset != 0 && rule == JL_PARSE_ALL) {
-        jl_error("Partial parsing not support by top level grammar rule");
+    jl_sym_t *rule = (jl_sym_t*)options;
+    if (rule != atom_sym && rule != statement_sym && rule != all_sym) {
+        jl_error("jl_fl_parse: unrecognized parse options");
+    }
+    if (offset != 0 && rule == all_sym) {
+        jl_error("Parse `all`: offset not supported");
     }
 
     jl_ast_context_t *ctx = jl_ast_ctx_enter();
@@ -803,22 +811,18 @@ JL_DLLEXPORT jl_value_t *jl_fl_parse(const char* text, size_t text_len,
     value_t fl_filename = cvalue_static_cstrn(fl_ctx, filename, filename_len);
     value_t fl_expr;
     size_t pos1 = 0;
-    if (rule == JL_PARSE_ALL) {
+    if (rule == all_sym) {
         value_t e = fl_applyn(fl_ctx, 2, symbol_value(symbol(fl_ctx, "jl-parse-all")),
                               fl_text, fl_filename);
         fl_expr = e;
         pos1 = e == fl_ctx->FL_EOF ? text_len : 0;
     }
-    else if (rule == JL_PARSE_STATEMENT || rule == JL_PARSE_ATOM) {
-        value_t greedy = rule == JL_PARSE_STATEMENT ? fl_ctx->T : fl_ctx->F;
+    else {
+        value_t greedy = rule == statement_sym ? fl_ctx->T : fl_ctx->F;
         value_t p = fl_applyn(fl_ctx, 4, symbol_value(symbol(fl_ctx, "jl-parse-one")),
                               fl_text, fl_filename, fixnum(offset), greedy);
         fl_expr = car_(p);
         pos1 = tosize(fl_ctx, cdr_(p), "parse");
-    }
-    else {
-        jl_ast_ctx_leave(ctx);
-        jl_errorf("Unknown parse rule %d", (int)rule);
     }
 
     // Convert to julia values
