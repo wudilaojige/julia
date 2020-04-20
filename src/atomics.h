@@ -75,6 +75,8 @@
 // TODO: Maybe add jl_atomic_compare_exchange_weak for spin lock
 #  define jl_atomic_store(obj, val)                     \
     __atomic_store_n(obj, val, __ATOMIC_SEQ_CST)
+#  define jl_atomic_store_relaxed(obj, val)                     \
+    __atomic_store_n(obj, val, __ATOMIC_RELAXED)
 #  if defined(__clang__) || defined(__ICC) || defined(__INTEL_COMPILER) || \
     !(defined(_CPU_X86_) || defined(_CPU_X86_64_))
 // ICC and Clang doesn't have this bug...
@@ -265,6 +267,12 @@ jl_atomic_store(volatile T *obj, T2 val)
 }
 template<typename T, typename T2>
 static inline void jl_atomic_store_release(volatile T *obj, T2 val)
+{
+    jl_signal_fence();
+    *obj = (T)val;
+}
+template<typename T, typename T2>
+static inline void jl_atomic_store_relaxed(volatile T *obj, T2 val)
 {
     jl_signal_fence();
     *obj = (T)val;
