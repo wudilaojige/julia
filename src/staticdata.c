@@ -783,6 +783,10 @@ static void jl_write_values(jl_serializer_state *s)
 
             if (jl_is_method(v)) {
                 write_padding(s->s, sizeof(jl_method_t) - tot);
+                if (((jl_method_t*)v)->ccallable) {
+                    arraylist_push(&reinit_list, (void*)item);
+                    arraylist_push(&reinit_list, (void*)3);
+                }
             }
             else if (jl_is_code_instance(v)) {
                 jl_code_instance_t *m = (jl_code_instance_t*)v;
@@ -1258,6 +1262,11 @@ static void jl_reinit_item(jl_value_t *v, int how)
             }
             break;
         }
+        case 3: { // install ccallable entry point in JIT
+            jl_svec_t *sv = ((jl_method_t*)v)->ccallable;
+            jl_compile_extern_c(NULL, NULL, jl_sysimg_handle, jl_svecref(sv, 0), jl_svecref(sv, 1));
+            break;
+        }
         default:
             assert(0 && "corrupt deserialization state");
             abort();
@@ -1576,6 +1585,7 @@ static void jl_restore_system_image_from_stream(ios_t *f)
     s.s = NULL;
 
     s.s = f;
+    jl_init_codegen();
     jl_finalize_deserializer(&s);
     s.s = NULL;
 
@@ -1598,7 +1608,6 @@ static void jl_restore_system_image_from_stream(ios_t *f)
     }
 
     s.s = &sysimg;
-    jl_init_codegen();
     jl_update_all_fptrs(&s); // fptr relocs and registration
     ios_close(&fptr_record);
     ios_close(&sysimg);
