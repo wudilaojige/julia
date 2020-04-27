@@ -35,20 +35,17 @@ using Test, LinearAlgebra
         @test isequal(X .* Inf, fX .* Inf)
 
         two = 2.0
-        @test X .^ 2.0 ==  X .^ (2.0,) == fX .^ 2.0 == X .^ two
-        two = 2
-        @test X .^ 2 ==  X .^ (2,) == fX .^ 2 == X .^ two
-        @test X .^ 2 ==  X .^ (2,)
-        @test X .^ 2 ==  fX .^ 2
-        @test X .^ 2 ==  X .^ two
-        @test X .^ (2,) == fX .^ 2
-        @test X .^ (2,) == X .^ two
-        @test fX .^ 2 == X .^ two
+        one = 1.0
+        zero = 0.0
         @test X .^ 2 isa typeof(X)
-        @test X .^ (2,) isa typeof(X)
+        @test X .^ (2.0,) isa typeof(X)
         @test X .^ two isa typeof(X)
-        @test X .^ 0 == fX .^ 0
-        @test X .^ -1 == fX .^ -1
+        @test X .^ 1 isa typeof(X)
+        @test X .^ (1.0,) isa typeof(X)
+        @test X .^ one isa typeof(X)
+        @test X .^ 0 isa typeof(X)
+        @test X .^ (0.0,) isa typeof(X)
+        @test X .^ zero isa typeof(X)
 
         for (Y, fY) in zip(structuredarrays, fstructuredarrays)
             @test broadcast(+, X, Y) == broadcast(+, fX, fY)
