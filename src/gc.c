@@ -716,15 +716,13 @@ STATIC_INLINE void gc_setmark_big(jl_ptls_t ptls, jl_taggedvalue_t *o,
                      mark_mode == GC_OLD_MARKED, hdr->sz & ~3);
 }
 
+#ifndef MEMDEBUG
 // This function should be called exactly once during marking for each pool
 // object being marked to update the page metadata.
 STATIC_INLINE void gc_setmark_pool_(jl_ptls_t ptls, jl_taggedvalue_t *o,
                                     uint8_t mark_mode,
                                     jl_gc_pagemeta_t *page) JL_NOTSAFEPOINT
 {
-#ifdef MEMDEBUG
-    gc_setmark_big(ptls, o, mark_mode);
-#else
     if (mark_mode == GC_OLD_MARKED) {
         ptls->gc_cache.perm_scanned_bytes += page->osize;
         jl_atomic_fetch_add_relaxed(&page->nold, 1);
@@ -742,24 +740,26 @@ STATIC_INLINE void gc_setmark_pool_(jl_ptls_t ptls, jl_taggedvalue_t *o,
     objprofile_count(jl_typeof(jl_valueof(o)),
                      mark_mode == GC_OLD_MARKED, page->osize);
     page->has_marked = 1;
-#endif
 }
+#endif
 
 STATIC_INLINE void gc_setmark_pool(jl_ptls_t ptls, jl_taggedvalue_t *o,
                                    uint8_t mark_mode) JL_NOTSAFEPOINT
 {
+#ifdef MEMDEBUG
+    gc_setmark_big(ptls, o, mark_mode);
+#else
     gc_setmark_pool_(ptls, o, mark_mode, jl_assume(page_metadata(o)));
+#endif
 }
 
 STATIC_INLINE void gc_setmark(jl_ptls_t ptls, jl_taggedvalue_t *o,
                               uint8_t mark_mode, size_t sz) JL_NOTSAFEPOINT
 {
-    if (sz <= GC_MAX_SZCLASS) {
+    if (sz <= GC_MAX_SZCLASS)
         gc_setmark_pool(ptls, o, mark_mode);
-    }
-    else {
+    else
         gc_setmark_big(ptls, o, mark_mode);
-    }
 }
 
 STATIC_INLINE void gc_setmark_buf_(jl_ptls_t ptls, void *o, uint8_t mark_mode, size_t minsz) JL_NOTSAFEPOINT
@@ -774,6 +774,7 @@ STATIC_INLINE void gc_setmark_buf_(jl_ptls_t ptls, void *o, uint8_t mark_mode, s
     // where the size estimate is a little off so we do a pool lookup to make
     // sure.
     if (__likely(gc_setmark_tag(buf, mark_mode, tag, &bits)) && !gc_verifying) {
+#ifndef MEMDEBUG
         if (minsz <= GC_MAX_SZCLASS) {
             jl_gc_pagemeta_t *page = page_metadata(buf);
             if (page) {
@@ -781,6 +782,7 @@ STATIC_INLINE void gc_setmark_buf_(jl_ptls_t ptls, void *o, uint8_t mark_mode, s
                 return;
             }
         }
+#endif
         gc_setmark_big(ptls, buf, bits);
     }
 }
